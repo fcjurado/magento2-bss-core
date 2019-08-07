@@ -15,17 +15,17 @@
  * @copyright  Copyright (c) 2017-2018 BSS Commerce Co. ( http://bsscommerce.com )
  * @license    http://bsscommerce.com/Bss-Commerce-License.txt
  */
+
 namespace Bss\Core\Block\Adminhtml;
 
 use Magento\Framework\Data\Form\Element\AbstractElement;
 
+/**
+ * Class Modules
+ * @package Bss\Core\Block\Adminhtml
+ */
 class Modules extends \Magento\Config\Block\System\Config\Form\Fieldset
 {
-    /**
-     * @var \Magento\Framework\Module\ModuleListInterface
-     */
-    private $moduleList;
-
     /**
      * @var \Magento\Framework\View\LayoutFactory
      */
@@ -37,65 +37,53 @@ class Modules extends \Magento\Config\Block\System\Config\Form\Fieldset
     private $bssHelper;
 
     /**
+     * @var \Bss\Core\Helper\Module
+     */
+    private $moduleHelper;
+
+    /**
      * @var \Magento\Config\Block\System\Config\Form\Field
      */
     private $fieldRenderer;
 
     /**
-     * @var \Magento\Framework\DataObjectFactory
-     */
-    private $dataObjectFactory;
-
-    /**
+     * Modules constructor.
      * @param \Magento\Backend\Block\Context $context
      * @param \Magento\Backend\Model\Auth\Session $authSession
      * @param \Magento\Framework\View\Helper\Js $jsHelper
-     * @param \Magento\Framework\Module\ModuleListInterface $moduleList
      * @param \Magento\Framework\View\LayoutFactory $layoutFactory
      * @param \Bss\Core\Helper\Data $bssHelper
-     * @param \Magento\Framework\DataObjectFactory $dataObjectFactory
+     * @param \Bss\Core\Helper\Module $moduleHelper
      * @param array $data
      */
     public function __construct(
         \Magento\Backend\Block\Context $context,
         \Magento\Backend\Model\Auth\Session $authSession,
         \Magento\Framework\View\Helper\Js $jsHelper,
-        \Magento\Framework\Module\ModuleListInterface $moduleList,
         \Magento\Framework\View\LayoutFactory $layoutFactory,
         \Bss\Core\Helper\Data $bssHelper,
-        \Magento\Framework\DataObjectFactory $dataObjectFactory,
+        \Bss\Core\Helper\Module $moduleHelper,
         array $data = []
-    ) {
+    )
+    {
         parent::__construct($context, $authSession, $jsHelper, $data);
-        $this->moduleList    = $moduleList;
         $this->layoutFactory = $layoutFactory;
-        $this->bssHelper  = $bssHelper;
-        $this->dataObjectFactory  = $dataObjectFactory;
+        $this->bssHelper = $bssHelper;
+        $this->moduleHelper = $moduleHelper;
     }
 
     /**
-     * Render fieldset html
-     *
      * @param AbstractElement $element
      * @return string
+     * @throws \ErrorException
      */
     public function render(AbstractElement $element)
     {
         $html = $this->_getHeaderHtml($element);
         $html .= $this->getTitleHtml($element);
-        $modules = $this->moduleList->getNames();
+        $localModules = $this->moduleHelper->getLocalBssModules();
 
-        $dispatchResult = $this->dataObjectFactory->create()->setData($modules);
-        $modules = $dispatchResult->toArray();
-
-        sort($modules);
-        foreach ($modules as $moduleName) {
-            if (strstr($moduleName, 'Bss_') === false
-                || $moduleName === 'Bss_Core'
-            ) {
-                continue;
-            }
-
+        foreach ($localModules as $moduleName) {
             $html .= $this->getFieldHtml($element, $moduleName);
         }
 
@@ -134,10 +122,11 @@ class Modules extends \Magento\Config\Block\System\Config\Form\Fieldset
             'module_name',
             \Bss\Core\Block\Adminhtml\Form\Element\Columns::class,
             [
-                'name'  => 'dummy',
+                'name' => 'dummy',
                 'label' => 'Module',
                 'current_ver' => 'Current Version',
-                'latest_ver' => 'Latest Version'
+                'latest_ver' => 'Latest Version',
+                'user_guide' => 'User Guide'
             ]
         )->setRenderer($this->getFieldRenderer());
 
@@ -153,52 +142,56 @@ class Modules extends \Magento\Config\Block\System\Config\Form\Fieldset
      */
     protected function getFieldHtml($fieldset, $moduleCode)
     {
-        $module = $this->bssHelper->getModuleInfo($moduleCode);
+        $localModule = $this->moduleHelper->getLocalModuleInfo($moduleCode);
 
-        if (!is_array($module)
-            || !array_key_exists('version', $module)
-            || !array_key_exists('description', $module)
-        ) {
+        if (empty($localModule)) {
             return '';
         }
 
         $suite = null;
-        if (isset($module['extra']['suite'])) {
-            $suite = $module['extra']['suite'];
+        if (isset($localModule['extra']['suite'])) {
+            $suite = $localModule['extra']['suite'];
         }
 
         if ($this->bssHelper->isModuleEnable('Bss_Breadcrumbs') && $suite == 'seo-suite') {
             return '';
         }
 
-        $moduleName = $module['description'];
-        $apiName = $module['name'];
+        $moduleName = $localModule['description'];
+        $apiName = $localModule['name'];
+
+        $latestVer = 'unknown';
+        $moduleUrl = '#';
+        $userGuide = '';
+        $module = $this->moduleHelper->searchByModule($apiName);
+
+        if (!empty($module)) {
+            $moduleName = $module['product_name'];
+            $latestVer = $this->moduleHelper->getLatestVersion($module);
+            $moduleUrl = $this->moduleHelper->getModuleUrl($module);
+            if (!empty($module['packages'])) {
+                $userGuide = $module['packages'][0]['user_guide'];
+                $userGuide = "<a href='$userGuide' target='_blank'>Link</a>";
+            }
+        }
 
         $moduleName = str_replace('Bss', '', $moduleName);
         $moduleName = str_replace('Modules', '', $moduleName);
         $moduleName = str_replace('Module', '', $moduleName);
         $moduleName = trim($moduleName);
 
-        $modules = $this->bssHelper->getRemoteModulesInfo();
+        $latestVerCol = $latestVer == 'unknown' ? $latestVer : "<a href='$moduleUrl' target='_blank'>$latestVer</a>";
 
-        $latestVer = 'unknown';
-        $moduleUrl = '#';
-        if (isset($modules[$apiName])) {
-            $latestVer = $this->getLatestVersion($modules[$apiName]);
-            $moduleUrl = $this->getModuleUrl($modules[$apiName]);
-        }
-
-        $latestVerCol = $latestVer == 'unknown' ? $latestVer : "<a href = '$moduleUrl' target='_blank'>$latestVer</a>";
-
-        $moduleVer = isset($module['extra']['suite-version']) ? $module['extra']['suite-version'] : $module['version'];
+        $moduleVer = isset($localModule['extra']['suite-version']) ? $localModule['extra']['suite-version'] : $localModule['version'];
         $field = $fieldset->addField(
             $moduleCode,
             \Bss\Core\Block\Adminhtml\Form\Element\Columns::class,
             [
-                'name'  => 'dummy',
+                'name' => 'dummy',
                 'label' => $moduleName,
                 'current_ver' => $moduleVer,
-                'latest_ver' => $latestVerCol
+                'latest_ver' => $latestVerCol,
+                'user_guide' => $userGuide
             ]
         )->setRenderer($this->getFieldRenderer());
 
@@ -248,164 +241,5 @@ class Modules extends \Magento\Config\Block\System\Config\Form\Fieldset
         $html .= '<colgroup class="scope-label" /><colgroup class="" /><tbody>';
 
         return $html;
-    }
-
-    /**
-     * Get bsscommerce.com module url.
-     *
-     * @param array $modulesInfo
-     * @return string
-     */
-    protected function getModuleUrl($modulesInfo)
-    {
-        if (!isset($modulesInfo[0])) {
-            return '#';
-        }
-
-        $moduleInfo = $modulesInfo[0];
-        return isset($moduleInfo['product_url']) ? $moduleInfo['product_url'] : '#';
-    }
-
-    /**
-     * Get module latest version from bsscommerce.com.
-     *
-     * @param array $modulesInfo
-     * @return string
-     */
-    protected function getLatestVersion($modulesInfo)
-    {
-        if (count($modulesInfo) == 1) {
-            $moduleInfo = $modulesInfo[0];
-            $linkTitle = explode(" ", $moduleInfo['title']);
-            $latestVer = ltrim($this->getLinkVersion($linkTitle), 'v');
-            return $latestVer;
-        }
-
-        $latestVer = $this->getLatestByExactVersionEdition($modulesInfo);
-
-        if (empty($latestVer)) {
-            $latestVer = $this->getLatestByExactEdition($modulesInfo);
-        }
-
-        if (empty($latestVer)) {
-            $latestVer = $this->getLatestByExactVersion($modulesInfo);
-        }
-
-        if (empty($latestVer)) {
-            $latestVer = $this->getLatestByRelativeVersion($modulesInfo);
-        }
-
-        if (empty($latestVer)) {
-            return 'unknown';
-        }
-
-        return max($latestVer);
-    }
-
-    /**
-     * Get module latest version by exact current Magento version and Edition.
-     *
-     * @param array $modulesInfo
-     * @return array
-     */
-    protected function getLatestByExactVersionEdition($modulesInfo)
-    {
-        $magentoVer = $this->bssHelper->getMagentoVersion();
-        $curEdition = $this->bssHelper->getMagentoEdition() == 'Community' ? 'CE' : 'EE';
-
-        $latestVer = [];
-        foreach ($modulesInfo as $moduleInfo) {
-            $linkTitle = explode(" ", $moduleInfo['title']);
-            $curlinkVer = ltrim($this->getLinkVersion($linkTitle), 'v');
-
-            if (strpos($curlinkVer, $magentoVer) !== false && strpos($curlinkVer, $curEdition) !== false) {
-                $latestVer[] = $curlinkVer;
-            }
-        }
-
-        return $latestVer;
-    }
-
-    /**
-     * Get module latest version by exact current Magento Edition.
-     *
-     * @param array $modulesInfo
-     * @return array
-     */
-    protected function getLatestByExactEdition($modulesInfo)
-    {
-        $magentoRelativeVer = $this->bssHelper->getMagentoRelativeVersion();
-        $curEdition = $this->bssHelper->getMagentoEdition() == 'Community' ? 'CE' : 'EE';
-
-        $latestVer = [];
-        foreach ($modulesInfo as $moduleInfo) {
-            $linkTitle = explode(" ", $moduleInfo['title']);
-            $curlinkVer = ltrim($this->getLinkVersion($linkTitle), 'v');
-
-            if (strpos($curlinkVer, $magentoRelativeVer) !== false
-                && strpos($curlinkVer, $curEdition) !== false) {
-                $latestVer[] = $curlinkVer;
-            }
-        }
-
-        return $latestVer;
-    }
-
-    /**
-     * Get module latest version by exact current Magento Version.
-     *
-     * @param array $modulesInfo
-     * @return array
-     */
-    protected function getLatestByExactVersion($modulesInfo)
-    {
-        $magentoVer = $this->bssHelper->getMagentoVersion();
-
-        $latestVer = [];
-        foreach ($modulesInfo as $moduleInfo) {
-            $linkTitle = explode(" ", $moduleInfo['title']);
-            $curlinkVer = ltrim($this->getLinkVersion($linkTitle), 'v');
-
-            if (strpos($curlinkVer, $magentoVer) !== false) {
-                $latestVer[] = $curlinkVer;
-            }
-        }
-
-        return $latestVer;
-    }
-
-    /**
-     * Get module latest version by current Magento Relative Version.
-     *
-     * @param array $modulesInfo
-     * @return array
-     */
-    protected function getLatestByRelativeVersion($modulesInfo)
-    {
-        $magentoRelativeVer = $this->bssHelper->getMagentoRelativeVersion();
-
-        $latestVer = [];
-        foreach ($modulesInfo as $moduleInfo) {
-            $linkTitle = explode(" ", $moduleInfo['title']);
-            $curlinkVer = ltrim($this->getLinkVersion($linkTitle), 'v');
-
-            if (strpos($curlinkVer, $magentoRelativeVer) !== false) {
-                $latestVer[] = $curlinkVer;
-            }
-        }
-
-        return $latestVer;
-    }
-
-    /**
-     * Get version from link title.
-     *
-     * @param array $linkTitle
-     * @return string
-     */
-    protected function getLinkVersion($linkTitle)
-    {
-        $index = (count($linkTitle) - 1);
-        return $linkTitle[$index];
     }
 }
