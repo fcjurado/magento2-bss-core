@@ -105,18 +105,28 @@ class Module
     /**
      * Get bsscommerce.com module url.
      *
-     * @param array $modules
+     * @param array $module
      * @return string
      */
-    public function getModuleUrl($modules)
+    public function getModuleUrl($module)
     {
-        $packages = $modules['packages'];
-        if (!isset($packages[0])) {
-            return '#';
-        }
+        return !empty($module['product_url']) ? $module['product_url'] : '#';
+    }
 
-        $packages = $packages[0];
-        return isset($packages['product_url']) ? $packages['product_url'] : '#';
+    /**
+     * Get Module User guide
+     *
+     * @param array $module
+     * @return string
+     */
+    public function getModuleUserGuide($module)
+    {
+        if (!empty($module['user_guide'])) {
+            $userGuide = $module['user_guide'];
+            $userGuide = "<a href='$userGuide' target='_blank'>" . __('Link') . "</a>";
+            return $userGuide;
+        }
+        return '';
     }
 
     /**
@@ -132,10 +142,7 @@ class Module
         $packages = $module['packages'];
         if (count($packages) == 1) {
             $moduleInfo = $packages[0];
-            $linkTitle = explode(" ", $moduleInfo['title']);
-            $latestVer = ltrim($this->getLinkVersion($linkTitle), 'v');
-
-            return $latestVer;
+            return $this->matchVersion($moduleInfo['title']);
         }
 
         $latestVer = $this->getLatestByExactVersionEdition($packages);
@@ -156,12 +163,23 @@ class Module
 
         if ($onlyVersionNumber) {
             foreach ($latestVer as $key => $version) {
-                preg_match("/(?:v)((?:[0-9]+\.?)+)/i", $version, $matches);
-                $latestVer[$key] = $matches[1];
+                $latestVer[$key] = $this->matchVersion($version);
             }
         }
 
         return max($latestVer);
+    }
+
+    /**
+     * @param string $versionString
+     * @return string
+     */
+    protected function matchVersion($versionString)
+    {
+        preg_match("/(?:v)((?:[0-9]+\.?)+)/i", $versionString, $matches);
+        if (isset($matches[1]))
+            return $matches[1];
+        return '';
     }
 
     /**

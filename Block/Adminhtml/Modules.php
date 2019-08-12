@@ -75,7 +75,6 @@ class Modules extends \Magento\Config\Block\System\Config\Form\Fieldset
     /**
      * @param AbstractElement $element
      * @return string
-     * @throws \ErrorException
      */
     public function render(AbstractElement $element)
     {
@@ -169,10 +168,7 @@ class Modules extends \Magento\Config\Block\System\Config\Form\Fieldset
             $moduleName = $module['product_name'];
             $latestVer = $this->moduleHelper->getLatestVersion($module);
             $moduleUrl = $this->moduleHelper->getModuleUrl($module);
-            if (!empty($module['packages'])) {
-                $userGuide = $module['packages'][0]['user_guide'];
-                $userGuide = "<a href='$userGuide' target='_blank'>Link</a>";
-            }
+            $userGuide = $this->moduleHelper->getModuleUserGuide($module);
         }
 
         $moduleName = str_replace('Bss', '', $moduleName);
